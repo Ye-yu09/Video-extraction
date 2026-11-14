@@ -199,6 +199,12 @@ def _fake_correct_llm(system: str, user: str) -> dict:
 
 
 class TestCorrectTexts:
+    @pytest.fixture(autouse=True)
+    def _ensure_llm_key(self, monkeypatch):
+        # 纠错路径需 llm_api_key 非空；显式设好，避免依赖运行环境 .env
+        # （CI 无 .env 时 key 为空 → correct_texts 会跳过纠错 → changed=0 断言失败）
+        monkeypatch.setattr(settings, "llm_api_key", "test-key")
+
     def test_batch_replace(self, monkeypatch):
         from app import summarizer as _sum
 
