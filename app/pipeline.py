@@ -34,6 +34,7 @@ _store = TaskStore(settings.data_dir / "tasks.db")
 _tasks: dict[str, TaskRecord] = _store.load_all()
 _lock = threading.RLock()
 _submit_lock = threading.Lock()  # 提交去重锁：防并发相同请求重复建任务
+_persist_state: dict[str, tuple[float, int]] = {}  # task_id -> (上次落库时间, 当时 progress)，进度写库节流用
 
 
 def _now() -> str:
@@ -229,11 +230,22 @@ def _save_transcript_cache(path: Path, result: transcriber.TranscriptResult) -> 
 
 
 def _update(rec: TaskRecord, **kw) -> None:
+    """更新任务字段并落库。
+
+    仅 progress 变化时做节流：距上次落库 <1s 且 progress 变化 <2% 则跳过 DB 写（内存已更新），
+    降低转写/整理高频进度回调下的 SQLite 写压力；stage/status 等关键变更必落库。
+    """
     with _lock:
         for k, v in kw.items():
             setattr(rec, k, v)
         rec.updated_at = _now()
+        if set(kw) == {"progress"}:
+            now = time.time()
+            last = _persist_state.get(rec.task_id)
+            if last and (now - last[0] < 1.0) and abs(rec.progress - last[1]) < 2:
+                return  # 节流：跳过本次 DB 写
         _store.upsert(rec)
+        _persist_state[rec.task_id] = (time.time(), rec.progress)
 
 
 async def run_task(task_id: str, req: ExtractRequest) -> None:

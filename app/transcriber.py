@@ -7,6 +7,7 @@ ASR_ENGINE=mock 可强制模拟转写，便于跑通整条管道。
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,8 +58,12 @@ REPO_MAP = {
     "large": "Systran/faster-whisper-large-v3",
 }
 
-# 当前权重下载进度回调（_whisper_transcribe 加载阶段临时设置，线程内使用）
+# 当前权重下载进度回调（_get_model 加载阶段临时设置；加载在 _model_lock 内串行，无并发竞态）
 _model_dl_cb = None
+
+# Whisper 模型实例缓存：按 (model_ref, device, compute_type, cpu_threads) 复用，避免每次转写重新加载
+_model_cache: dict[tuple, object] = {}
+_model_lock = threading.Lock()
 
 
 def _safe_cb(cb, pct: int, phase: str) -> None:
@@ -146,9 +151,40 @@ def transcribe(audio_path: Path, progress_cb=None, model: str | None = None) -> 
     return _whisper_transcribe(audio_path, progress_cb, WhisperModel, model)
 
 
-def _whisper_transcribe(audio_path: Path, progress_cb, WhisperModel, model_override: str | None = None) -> TranscriptResult:
-    global _model_dl_cb
+def _get_model(model_ref: str, device: str, WhisperModel, progress_cb=None):
+    """按 (模型,设备,计算类型,CPU线程) 缓存已加载的 WhisperModel，跨任务复用，避免每次转写重新加载。
 
+    加载在 _model_lock 内完成：同一模型并发任务只加载一次（第二个等第一个加载完直接复用），
+    顺带消除原 _model_dl_cb 全局变量在并发下的竞态。返回 (model, hit_cache)。
+    """
+    key = (str(model_ref), device, settings.asr_compute_type, settings.cpu_threads if device == "cpu" else 0)
+    with _model_lock:
+        cached = _model_cache.get(key)
+        if cached is not None:
+            _safe_cb(progress_cb, 100, "model")
+            return cached, True
+
+        global _model_dl_cb
+        _model_dl_cb = progress_cb
+        try:
+            try:
+                from huggingface_hub import progress as _hf_progress  # noqa: PLC0415
+
+                _hf_progress.tqdm = _progress_tqdm
+            except Exception:  # noqa: BLE001
+                logger.debug("hf 进度钩子安装失败，忽略")
+            _safe_cb(progress_cb, 1, "model")  # 通知进入模型加载阶段
+            load_kwargs = dict(device=device, compute_type=settings.asr_compute_type)
+            if settings.cpu_threads > 0 and device == "cpu":
+                load_kwargs["cpu_threads"] = settings.cpu_threads
+            model = WhisperModel(model_ref, **load_kwargs)
+            _model_cache[key] = model
+            return model, False
+        finally:
+            _model_dl_cb = None
+
+
+def _whisper_transcribe(audio_path: Path, progress_cb, WhisperModel, model_override: str | None = None) -> TranscriptResult:
     device = settings.asr_device
     if device == "auto":
         try:
@@ -159,38 +195,23 @@ def _whisper_transcribe(audio_path: Path, progress_cb, WhisperModel, model_overr
             device = "cpu"
 
     model_ref = model_override or settings.asr_model
-    logger.info(
-        "加载 Whisper 模型 %s (device=%s, compute_type=%s)",
-        model_ref, device, settings.asr_compute_type,
-    )
-    t0 = time.time()
     # 支持本地模型目录：ASR_MODEL=data/models/whisper-small（已用 snapshot_download 预下载）
     if Path(model_ref).is_dir():
         model_ref = str(Path(model_ref).resolve())
         logger.info("使用本地模型目录: %s", model_ref)
+    t0 = time.time()
     try:
-        # 权重下载阶段复用同一进度回调（phase="model"，pipeline 侧映射到 20-30%）
-        _model_dl_cb = progress_cb
-        try:
-            from huggingface_hub import progress as _hf_progress  # noqa: PLC0415
-
-            _hf_progress.tqdm = _progress_tqdm
-        except Exception:  # noqa: BLE001
-            logger.debug("hf 进度钩子安装失败，忽略")
-        _safe_cb(progress_cb, 1, "model")  # 通知进入模型加载阶段
-        load_kwargs = dict(device=device, compute_type=settings.asr_compute_type)
-        if settings.cpu_threads > 0 and device == "cpu":
-            load_kwargs["cpu_threads"] = settings.cpu_threads
-        model = WhisperModel(model_ref, **load_kwargs)
+        model, hit = _get_model(model_ref, device, WhisperModel, progress_cb)
     except Exception as exc:  # noqa: BLE001
         hint = ""
         msg_l = str(exc).lower()
         if any(k in msg_l for k in ("timeout", "connection", "hub", "network")):
             hint = "。若无法访问 HuggingFace，请设置环境变量 HF_ENDPOINT=https://hf-mirror.com 后重试"
         raise AppError(ERR_ASR_FAILED, f"Whisper 模型加载失败:{exc}{hint}", retryable=True) from exc
-    finally:
-        _model_dl_cb = None
-    logger.info("模型加载耗时 %.1fs", time.time() - t0)
+    if hit:
+        logger.info("复用已缓存 Whisper 模型（跳过加载）")
+    else:
+        logger.info("模型加载耗时 %.1fs", time.time() - t0)
 
     try:
         seg_iter, info = model.transcribe(

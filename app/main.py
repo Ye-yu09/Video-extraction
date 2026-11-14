@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -58,8 +59,34 @@ async def _prewarm_asr() -> None:
         logger.warning("ASR 模型预检异常（不影响服务，提交任务时将重试）", exc_info=True)
 
 
+def _startup_safety_checks() -> None:
+    """启动安全/正确性检查：多 worker 拒绝 + 公网无 token 告警。"""
+    # 多 worker：内存态任务/缓存/并发限流均为单进程设计，workers>1 会致去重失效、限流失控
+    workers = 1
+    argv = sys.argv
+    for i, a in enumerate(argv):
+        if a in ("--workers", "-w") and i + 1 < len(argv):
+            try:
+                workers = int(argv[i + 1])
+            except ValueError:
+                pass
+    if workers > 1:
+        raise RuntimeError(
+            f"检测到 --workers={workers}：本项目任务状态/缓存/并发限流均为单进程设计，"
+            "多 worker 会导致缓存去重失效、并发上限失控、重启误杀他进程任务。"
+            "请单进程部署（省略 --workers 或 --workers 1）。"
+        )
+    # 公网/局域网暴露且无鉴权：任何人都能 POST 烧你的 LLM 余额
+    if any("0.0.0.0" in a for a in argv) and not settings.api_token:
+        logger.warning(
+            "⚠️ 服务绑定 0.0.0.0 且未设 API_TOKEN：公网/局域网任何人都能调用并消耗你的 LLM 额度。"
+            "请在 .env 设置 API_TOKEN（请求头带 X-API-Key）。"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _startup_safety_checks()
     if settings.data_retention_days > 0:
         asyncio.create_task(_daily_cleanup())
     if settings.asr_prewarm:

@@ -123,7 +123,7 @@ class Settings:
     # --- 内置桥（bili-scroll → 提取器 进程内心跳；档位②整合，取代外部 Windows 计划任务）---
     # 桥脚本本体在 bridge/bili_bridge.py；这里只配置「服务进程内自动跑心跳」的开关与节奏。
     # 仅在 Windows 且 ~/.dsh/bili-duty 有日报时才有实际转发；Linux/Docker 下扫不到东西但不报错，可按需关。
-    bridge_enabled: bool = _env_bool("BRIDGE_ENABLED", True)
+    bridge_enabled: bool = _env_bool("BRIDGE_ENABLED", False)  # 默认关（开源友好）；本机 .env 显式设 true 开启
     bridge_interval: int = int(os.getenv("BRIDGE_INTERVAL", "600"))  # 心跳间隔秒（默认 10 分钟）
     bridge_tiers: str = field(default_factory=lambda: os.getenv("BRIDGE_TIERS", "值得看").strip())
 
