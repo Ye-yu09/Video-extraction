@@ -31,7 +31,7 @@
 - 已产出：BV1ei4n6pEZY、BV1zn4E6REy2 两份精华（摘要+带时间戳要点+金句+行动项+完整转写）
 
 ### 想切回高质量 large-v3
-编辑 `.env` 的 `ASR_MODEL=C:/Users/lenovo/Desktop/视频提取器/models/faster-whisper-small`
+编辑 `.env` 的 `ASR_MODEL=models/faster-whisper-small`（本地模型目录，相对项目根；也可写绝对路径）
 改回 `ASR_MODEL=large-v3`（CPU 慢，适合不急的片子）。
 
 ## 优化轮（2026-11-08 二轮）— 已实现并验证
