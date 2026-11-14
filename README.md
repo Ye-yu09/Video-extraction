@@ -1,8 +1,13 @@
 # 🎬 视频内容提取与智能整理
 
+![CI](https://github.com/Ye-yu09/Video-extraction/actions/workflows/ci.yml/badge.svg)
+![license](https://img.shields.io/badge/license-MIT-green)
+
 输入一个 B 站视频链接，自动完成 **下载 → 音频提取 → 语音转文字 → 大模型整理**，输出结构化精华内容（摘要、要点、分主题详解、原文引用、行动项），并附完整转写与 SRT 字幕。
 
 > 开发规范见同目录《开发提示词-视频内容提取与智能整理.md》，本文档为实现产物说明。
+>
+> 📦 部署与运行见 [DEPLOY.md](DEPLOY.md) ｜ 🤝 欢迎提 [Issue](https://github.com/Ye-yu09/Video-extraction/issues) / [Pull Request](https://github.com/Ye-yu09/Video-extraction/pulls)
 
 ---
 
