@@ -40,7 +40,8 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 # ---------- 路径 ----------
-BILI_HOME = Path(os.environ.get("BILI_HOME", r"C:\Users\lenovo\.dsh\bili-duty"))
+# 默认 ~/.dsh/bili-duty（Path.home() 跨平台探测），可用环境变量 BILI_HOME 覆盖；不写死个人用户名
+BILI_HOME = Path(os.environ.get("BILI_HOME") or str(Path.home() / ".dsh" / "bili-duty"))
 CRED_FILE = BILI_HOME / "bili_credential.json"
 EXTRACTOR_DIR = Path(__file__).resolve().parent.parent
 ESSENCE_DIR = EXTRACTOR_DIR / "essence"

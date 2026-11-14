@@ -1,7 +1,7 @@
 Option Explicit
 Dim sh, root, py, healthUrl, pageUrl, i
 
-root = "C:\Users\lenovo\Desktop\ ”∆µÃ·»°∆˜"
+root = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\") - 1)
 py = root & "\.venv\Scripts\python.exe"
 healthUrl = "http://127.0.0.1:8000/api/health"
 pageUrl = "http://127.0.0.1:8000/"

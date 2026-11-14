@@ -64,7 +64,7 @@ dsh-bili-scroll 每轮搜到并挑中的好视频，自动把 BV 链接发给本
 - **提取深度**：**essence**（精华摘要）
 
 ## 关键事实（已核实，开工时不用再查）
-- bili-scroll 家目录：`C:\Users\lenovo\.dsh\bili-duty`
+- bili-scroll 家目录：`~/.dsh/bili-duty`（Windows 即 `C:\Users\<你>\.dsh\bili-duty`）
   - 挑片记录：`out\<日期>.md`，每条 `### BVxxxxxxxxxx` 起头，块内含 `- **档位**：值得看/可以看/不值当`、`- 标题：`、`- 链接：https://www.bilibili.com/video/BVxxxxxxxxxx`
   - 另有 `seen.md`（表：日期|BV|标题|UP|状态=挑了/跳过，**不含档位**）与 `digest\<yyyy-mm>.md`（每行带链接）
   - **档位只在 out\*.md 里**，所以"只值得看"要解析日报块，不能只看 seen.md
@@ -75,7 +75,7 @@ dsh-bili-scroll 每轮搜到并挑中的好视频，自动把 BV 链接发给本
   - `GET /api/tasks/{id}/result` → `{markdown, summary, video, stats}`
   - `validate_url` 只认 `bilibili.com/video/BVxxxxxxxxxx`；`.env` 无 `API_TOKEN`（POST 不鉴权）；`LLM_API_KEY` 已配（DeepSeek）
   - venv 齐（uvicorn/fastapi/yt_dlp/faster_whisper/openai）；**不需要系统 ffmpeg**（bestaudio m4a 直链 + PyAV 解码）
-- 桥脚本已起草：`C:\Users\lenovo\Desktop\视频提取器\bridge\bili_bridge.py`
+- 桥脚本已起草：`bridge/bili_bridge.py`（提取器项目内）
   - 纯标准库；参数 `--dry-run / --loop / --interval / --autostart / --depth / --tiers`
   - 去重记录：`bridge\forwarded.json`；日志：`bridge\bridge.log`
 
