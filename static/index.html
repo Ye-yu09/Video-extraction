@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视频内容提取与智能整理</title>
+<style>
+  :root {
+    --primary: #4f46e5; --primary-2: #7c3aed; --accent: #06b6d4;
+    --bg: #f5f6fb; --card: #fff; --text: #1e293b; --muted: #64748b;
+    --border: #e2e8f0; --ring: rgba(79,70,229,.18);
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.12);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  /* 顶部氛围背景 */
+  .hero-bg { position: fixed; inset: 0 0 auto 0; height: 340px; z-index: 0; pointer-events: none;
+    background: radial-gradient(60% 120% at 20% 0%, rgba(99,102,241,.14), transparent 60%),
+                radial-gradient(50% 120% at 85% 0%, rgba(6,182,212,.12), transparent 60%); }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 40px 20px 72px; position: relative; z-index: 1; }
+
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 24px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-2) 60%, var(--accent));
+    box-shadow: 0 6px 18px -6px rgba(79,70,229,.5); color: #fff; }
+  h1 { font-size: 25px; margin: 0; font-weight: 800; letter-spacing: .5px;
+    background: linear-gradient(90deg, #1e293b, #4f46e5); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .sub { color: var(--muted); margin: 0 0 26px 60px; font-size: 13.5px; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow); margin-bottom: 18px; animation: rise .4s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  label { display: block; font-size: 12.5px; font-weight: 700; margin: 14px 0 5px; color: #334155; white-space: nowrap; }
+  label .dim { font-weight: normal; color: var(--muted); }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 14px;
+    background: #fbfcfe; transition: border-color .15s, box-shadow .15s; color: var(--text); }
+  input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--ring); background: #fff; }
+  select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 34px; }
+
+  .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 4px 14px; }
+  .adv-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 12.5px; color: var(--primary); cursor: pointer; user-select: none; font-weight: 600; }
+  .adv-panel { display: none; margin-top: 4px; padding: 6px 14px 14px; border: 1px dashed var(--border); border-radius: 12px; background: #fafbff; }
+  .adv-panel.open { display: block; animation: rise .25s ease both; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; margin: 10px 18px 0 0; font-size: 13px; color: #334155; cursor: pointer; }
+  .switch input { width: auto; accent-color: var(--primary); transform: scale(1.15); }
+
+  .btn { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: 0; border-radius: 12px;
+    padding: 13px 24px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 18px; width: 100%;
+    box-shadow: 0 8px 20px -8px rgba(79,70,229,.55); transition: transform .12s, box-shadow .12s, filter .12s; }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 12px 26px -8px rgba(79,70,229,.6); }
+  .btn:active:not(:disabled) { transform: translateY(0); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+
+  .progress-wrap { display: none; margin-top: 18px; }
+  .bar { height: 10px; background: #eef0f6; border-radius: 999px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(15,23,42,.06); }
+  .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--primary), var(--accent)); border-radius: 999px; transition: width .5s cubic-bezier(.4,0,.2,1); position: relative; }
+  .bar > div::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); animation: shine 1.4s infinite; }
+  @keyframes shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .p-label { font-size: 13px; color: var(--muted); margin-top: 9px; font-weight: 600; }
+
+  .err { display: none; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 10px; padding: 12px 14px; margin-top: 16px; font-size: 13.5px; }
+  .notice { display: none; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 10px; padding: 11px 14px; margin-top: 16px; font-size: 13.5px; font-weight: 600; }
+
+  .result { display: none; }
+  .result pre { background: #0f172a; color: #e2e8f0; padding: 18px; border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar button { background: #f1f5f9; border: 1px solid var(--border); color: #334155; border-radius: 999px; padding: 7px 15px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .toolbar button:hover { background: #e8edf5; border-color: #cbd5e1; transform: translateY(-1px); }
+  .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; padding: 8px 12px; background: #f8fafc; border-radius: 10px; border: 1px solid var(--border); }
+  .degraded { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 10px; padding: 10px 13px; font-size: 13px; margin-bottom: 12px; }
+
+  .hist-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+  .hist-head h2 { font-size: 17px; margin: 0; font-weight: 800; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #eef1f6; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; background: #f8fafc; }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: #f8faff; }
+  tbody tr:last-child td { border-bottom: 0; }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge.done { background: #dcfce7; color: #15803d; }
+  .badge.failed { background: #fee2e2; color: #b91c1c; }
+  .badge.running { background: #dbeafe; color: #1d4ed8; }
+  .badge.running::before { animation: blink 1s infinite; }
+  .badge.queued { background: #f1f5f9; color: #475569; }
+  .badge.cancelled { background: #fef3c7; color: #92400e; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .badge.depth-essence { background: #ede9fe; color: #6d28d9; }
+  .badge.depth-detailed { background: #dbeafe; color: #1d4ed8; }
+  .badge.depth-full { background: #fce7f3; color: #be185d; }
+
+  .tbtn { background: #f1f5f9; border: 1px solid var(--border); color: #334155; border-radius: 8px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; margin-right: 6px; transition: all .15s; }
+  .tbtn:hover { background: #e8edf5; transform: translateY(-1px); }
+  .tbtn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .tbtn.primary:hover { background: #4338ca; }
+  .hist-title { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .his-progress { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+  .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .filter-row select { width: 150px; padding: 7px 30px 7px 10px; font-size: 13px; }
+  .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .pager button { background: #f1f5f9; border: 1px solid var(--border); color: #334155; border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .pager button:hover:not(:disabled) { background: #e8edf5; }
+  .pager button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .episodes { margin-top: 16px; border: 1px solid #ddd6fe; background: linear-gradient(180deg, #f5f3ff, #faf5ff); border-radius: 12px; padding: 15px; }
+  .ep-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 14px; color: #5b21b6; margin-bottom: 8px; }
+  .ep-list { max-height: 260px; overflow-y: auto; }
+  .ep-item { display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; border-radius: 8px; transition: background .12s; }
+  .ep-item:hover { background: rgba(124,58,237,.06); }
+  .ep-item input { width: auto; accent-color: var(--primary); }
+  .ep-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ep-dur { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .ep-submit { width: auto; margin-top: 10px; padding: 10px 22px; font-size: 14px; }
+
+  .md-body { font-size: 14px; line-height: 1.85; }
+  .md-body h1 { font-size: 20px; margin: 18px 0 8px; font-weight: 800; }
+  .md-body h2 { font-size: 17px; margin: 16px 0 8px; font-weight: 800; color: var(--primary); border-bottom: 2px solid #eef2ff; padding-bottom: 5px; }
+  .md-body h3 { font-size: 15px; margin: 12px 0 5px; font-weight: 700; }
+  .md-body ul, .md-body ol { padding-left: 24px; margin: 6px 0; }
+  .md-body li { margin: 3px 0; }
+  .md-body blockquote { border-left: 3px solid var(--primary); margin: 10px 0; padding: 6px 14px; color: #475569; background: #f5f3ff; border-radius: 0 10px 10px 0; }
+  .md-body strong { font-weight: 700; color: #0f172a; }
+  .md-body code { background: #f1f5f9; padding: 1px 6px; border-radius: 5px; font-size: 13px; }
+  .md-body hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
+  .md-body details { margin: 10px 0; }
+  .md-body summary { cursor: pointer; color: var(--primary); font-size: 13px; font-weight: 600; }
+
+  @media (max-width: 640px) { .sub { margin-left: 0; } .wrap { padding: 24px 12px 56px; } .hist-title { max-width: 150px; } }
+</style>
+</head>
+<body>
+<div class="hero-bg"></div>
+<div class="wrap">
+  <div class="brand"><span class="logo">🎬</span><h1>视频内容提取与智能整理</h1></div>
+  <p class="sub">粘贴 B 站链接 → 自动下载 · 语音转文字 · AI 提炼精华，重复提交秒回缓存结果</p>
+
+  <div class="card">
+    <label>B 站视频链接 <span class="dim">（https://www.bilibili.com/video/BV…）</span></label>
+    <input type="text" id="url" placeholder="https://www.bilibili.com/video/BV1GJ411x7h7">
+
+    <div class="field-grid">
+      <div>
+        <label>提取深度</label>
+        <select id="depth">
+          <option value="essence">精华摘要（默认）</option>
+          <option value="detailed">详细要点</option>
+          <option value="full">全文整理</option>
+        </select>
+      </div>
+      <div>
+        <label>使用用途</label>
+        <select id="purpose">
+          <option value="快速了解视频核心内容">快速了解视频核心内容</option>
+          <option value="整理为学习笔记">整理为学习笔记</option>
+          <option value="提炼工作报告素材">提炼工作报告素材</option>
+          <option value="知识库归档">知识库归档</option>
+        </select>
+      </div>
+      <div>
+        <label>转写模型 <span class="dim">（快速预览档）</span></label>
+        <select id="asrModel">
+          <option value="">服务端默认</option>
+          <option value="tiny">tiny（最快·略糙）</option>
+          <option value="base">base（快速预览）</option>
+          <option value="small">small（均衡）</option>
+          <option value="medium">medium（较准）</option>
+        </select>
+      </div>
+      <div>
+        <label>输出语言</label>
+        <select id="outputLang">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+        </select>
+      </div>
+      <div>
+        <label>分 P <span class="dim">（0=默认；支持 1-3 / 2,5,8 / 1-4,7）</span></label>
+        <input type="text" id="page" value="0" placeholder="如 1-3">
+      </div>
+    </div>
+
+    <label class="adv-toggle" onclick="toggleAdv()"><span id="advArrow">▸</span> 高级选项（纠错增强 / 自检 / API Token）</label>
+    <div class="adv-panel" id="advPanel">
+      <div class="field-grid">
+        <div>
+          <label style="margin-top:6px">API Token <span class="dim">（服务端开启时填）</span></label>
+          <input type="password" id="apiToken" placeholder="留空=不鉴权">
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap">
+        <label class="switch"><input type="checkbox" id="optPunctuation"> 纠错断句+标点</label>
+        <label class="switch"><input type="checkbox" id="optSelfCheck"> 摘要自检</label>
+      </div>
+    </div>
+
+    <button class="btn" id="submit">✨ 开始提取</button>
+
+    <div class="notice" id="cachedBox"></div>
+
+    <!-- 多 P 选集批量面板 -->
+    <div class="episodes" id="epPanel" style="display:none">
+      <div class="ep-head">🎞️ 检测到多 P 视频（共 <span id="epCount">0</span> 集）
+        <button class="tbtn" onclick="closeEpPanel()">收起</button>
+      </div>
+      <div id="epList" class="ep-list"></div>
+      <button class="btn ep-submit" id="epSubmit" onclick="submitEpisodes()">批量提交选中集</button>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="bar"><div id="barFill"></div></div>
+      <div class="p-label" id="pLabel">排队中…</div>
+    </div>
+
+    <div class="err" id="errBox"></div>
+  </div>
+
+  <div class="card result" id="resultCard">
+    <div class="toolbar">
+      <button onclick="copyResult()">复制全文</button>
+      <button onclick="downloadResult()">下载 .md</button>
+      <button onclick="exportTask('docx')">导出 Word</button>
+      <button onclick="exportTask('pdf')">导出 PDF</button>
+      <button onclick="downloadSrt()">下载字幕 SRT</button>
+      <button id="mdToggle" onclick="toggleMdView()">📄 源码视图</button>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="degraded" id="degraded" style="display:none"></div>
+    <div id="resultHtml" class="md-body"></div>
+    <pre id="resultPre" style="display:none"></pre>
+  </div>
+
+  <div class="card">
+    <div class="hist-head">
+      <h2>📋 历史任务</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="statusFilter" onchange="onFilterChange()" title="按状态筛选" style="width:140px;padding:7px 30px 7px 11px;font-size:13px">
+          <option value="">全部状态</option>
+          <option value="queued">排队中</option>
+          <option value="running">处理中</option>
+          <option value="done">已完成</option>
+          <option value="failed">失败</option>
+          <option value="cancelled">已取消</option>
+        </select>
+        <button class="tbtn" onclick="loadHistory(true)">⟳ 刷新</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>状态</th><th>深度</th><th>标题</th><th>时长</th><th>提交时间</th><th>操作</th></tr>
+      </thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+    <div id="historyEmpty" style="color:var(--muted);font-size:13px;padding:8px 0">暂无任务，提交第一个链接后这里会出现记录</div>
+    <div class="pager">
+      <button id="prevPage" onclick="goPage(-1)">‹ 上一页</button>
+      <span id="pageInfo"></span>
+      <button id="nextPage" onclick="goPage(1)">下一页 ›</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentTask = null;
+let pollTimer = null;
+
+const STAGE_LABEL = {
+  downloading: "📥 下载音频", loading_model: "⬇️ 加载/下载模型", transcribing: "🗣️ 语音转文字", correcting: "✏️ 转写纠错",
+  summarizing: "🧠 大模型整理", finalizing: "✍️ 生成结果",
+};
+
+document.getElementById("submit").addEventListener("click", start);
+
+// 高级选项折叠面板
+function toggleAdv() {
+  const p = document.getElementById("advPanel");
+  const open = p.classList.toggle("open");
+  document.getElementById("advArrow").textContent = open ? "▾" : "▸";
+}
+// 失焦时自动探测多 P（分 P 填 0 才探测；填了具体页码不弹面板）
+document.getElementById("url").addEventListener("blur", () => { maybeDetectEpisodes(); });
+
+async function start() {
+  const url = document.getElementById("url").value.trim();
+  if (!url) { showErr("请输入 B 站视频链接"); return; }
+  hideErr(); hideResult(); hideCached();
+  setBusy(true);
+  try {
+    const data = await postExtract(url, buildOptions());
+    if (data.batch) {
+      // 分 P 批量：多任务已提交，切到历史页跟踪
+      const cachedN = data.items.filter(i => i.cached).length;
+      setBusy(false);
+      showCached(`🎞️ 已批量提交 ${data.count} 集（P${data.items.map(i => i.page).join(", ")}）${cachedN ? `，其中 ${cachedN} 集命中缓存秒回` : ""}`);
+      loadHistory();
+      return;
+    }
+    currentTask = data.task_id;
+    if (data.cached) {
+      showCached("⚡ 命中缓存：同一链接与深度已有结果，直接复用（省去重复下载 / 转写 / LLM 调用）");
+    }
+    document.getElementById("progressWrap").style.display = "block";
+    document.getElementById("pLabel").textContent = "排队中…";
+    poll();
+  } catch (e) {
+    showErr(e.message);
+    setBusy(false);
+  }
+}
+
+// 当前表单参数快照（重试/批量复用）；分P框支持范围语法：含 -/, 视为批量 pages
+function buildOptions(overrides = {}) {
+  const pageRaw = document.getElementById("page").value.trim() || "0";
+  const isRange = /[-,，]/.test(pageRaw);
+  return Object.assign({
+    depth: document.getElementById("depth").value,
+    purpose: document.getElementById("purpose").value,
+    audience: "通用受众",
+    asr_model: document.getElementById("asrModel").value,
+    output_lang: document.getElementById("outputLang").value,
+    page: isRange ? 0 : (parseInt(pageRaw) || 0),
+    pages: isRange ? pageRaw.replace(/，/g, ",") : "",
+    correct_punctuation: document.getElementById("optPunctuation").checked,
+    summary_self_check: document.getElementById("optSelfCheck").checked ? "full" : "",
+  }, overrides);
+}
+
+async function postExtract(url, opts) {
+  const apiToken = document.getElementById("apiToken").value.trim();
+  const headers = { "Content-Type": "application/json" };
+  if (apiToken) headers["X-API-Key"] = apiToken;
+  const resp = await fetch("/api/extract", { method: "POST", headers, body: JSON.stringify(Object.assign({ url }, opts)) });
+  const data = await resp.json();
+  if (!resp.ok) { throw new Error(errMsg(data)); }
+  return data;
+}
+
+async function poll() {
+  if (!currentTask) return;
+  const resp = await fetch(`/api/tasks/${currentTask}`);
+  const t = await resp.json();
+  if (!resp.ok) { showErr(errMsg(t)); setBusy(false); clearTimeout(pollTimer); return; }
+
+  const stage = STAGE_LABEL[t.stage] || "";
+  document.getElementById("barFill").style.width = (t.progress || 0) + "%";
+  document.getElementById("pLabel").textContent =
+    `[${Math.round(t.progress || 0)}%] ${stage}${t.video?.title ? " — " + t.video.title : ""}`;
+
+  if (t.status === "done") {
+    clearTimeout(pollTimer);
+    setBusy(false);
+    renderResult(t);
+    loadHistory();
+    return;
+  }
+  if (t.status === "failed" || t.status === "cancelled") {
+    clearTimeout(pollTimer);
+    setBusy(false);
+    showErr((t.error?.message || "任务" + t.status) + (t.error?.code ? `（${t.error.code}）` : ""));
+    loadHistory();
+    return;
+  }
+  pollTimer = setTimeout(poll, 2000);
+}
+
+function renderResult(t) {
+  document.getElementById("resultCard").style.display = "block";
+  const meta = [];
+  if (t.video) {
+    meta.push(`标题：${t.video.title}`, `UP主：${t.video.uploader}`, `时长：${fmtDur(t.video.duration)}`);
+  }
+  meta.push(`深度：${DEPTH_LABEL[t.depth] || t.depth || "精华摘要"}`);
+  if (t.stats) {
+    meta.push(`转写：${t.stats.chars || 0} 字 / ${t.stats.segments || 0} 段`, `分块：${t.stats.chunks || 0} 块`);
+    if (t.stats.cached_transcript) meta.push("⚡ 转写缓存命中");
+    if (t.stats.corrected_segments) meta.push(`纠错：${t.stats.corrected_segments} 段`);
+    if (t.stats.avg_logprob != null) meta.push(`置信度：${t.stats.avg_logprob}`);
+    if (t.stats.summarize_seconds != null) meta.push(`整理耗时：${t.stats.summarize_seconds}s`);
+    if (t.stats.llm_tokens && ((t.stats.llm_tokens.prompt || 0) + (t.stats.llm_tokens.completion || 0)) > 0) {
+      const lt = t.stats.llm_tokens;
+      meta.push(`💰 LLM 消耗：${(lt.prompt || 0) + (lt.completion || 0)} tokens（输入 ${lt.prompt || 0} + 输出 ${lt.completion || 0}）`);
+    } else if (t.stats.llm_tokens) {
+      meta.push("💰 LLM 消耗：0（缓存复用，零调用）");
+    }
+  }
+  document.getElementById("meta").textContent = meta.join(" ｜ ");
+  const d = document.getElementById("degraded");
+  const reason = (t.summary && t.summary.degraded) ? (t.summary.degraded_reason || "") : "";
+  d.style.display = reason ? "block" : "none";
+  d.textContent = "⚠️ " + reason;
+  const mdText = t.markdown || "（无结果）";
+  document.getElementById("resultPre").textContent = mdText;
+  document.getElementById("resultHtml").innerHTML = renderMd(mdText);
+  // 默认渲染视图，源码隐藏
+  document.getElementById("resultHtml").style.display = "block";
+  document.getElementById("resultPre").style.display = "none";
+  document.getElementById("mdToggle").textContent = "📄 源码视图";
+  document.getElementById("resultHtml").scrollIntoView({ behavior: "smooth" });
+}
+
+function toggleMdView() {
+  const html = document.getElementById("resultHtml");
+  const pre = document.getElementById("resultPre");
+  const btn = document.getElementById("mdToggle");
+  if (html.style.display !== "none") {
+    html.style.display = "none";
+    pre.style.display = "block";
+    btn.textContent = "👁 渲染视图";
+  } else {
+    html.style.display = "block";
+    pre.style.display = "none";
+    btn.textContent = "📄 源码视图";
+  }
+}
+
+// 轻量 Markdown → HTML 渲染（不引第三方库；先转义再按行处理标题/列表/引用/粗体/分隔线）
+function renderMd(text) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`(.+?)`/g, "<code>$1</code>");
+  const lines = esc(text).split("\n");
+  const out = [];
+  let inUl = false, inOl = false;
+  const closeLists = () => { if (inUl) { out.push("</ul>"); inUl = false; } if (inOl) { out.push("</ol>"); inOl = false; } };
+  for (let line of lines) {
+    if (/^### (.+)/.test(line)) { closeLists(); out.push(`<h3>${inline(line.slice(4))}</h3>`); continue; }
+    if (/^## (.+)/.test(line)) { closeLists(); out.push(`<h2>${inline(line.slice(3))}</h2>`); continue; }
+    if (/^# (.+)/.test(line)) { closeLists(); out.push(`<h1>${inline(line.slice(2))}</h1>`); continue; }
+    if (/^---\s*$/.test(line)) { closeLists(); out.push("<hr>"); continue; }
+    if (/^>\s?(.*)/.test(line)) { closeLists(); out.push(`<blockquote>${inline(line.replace(/^>\s?/, ""))}</blockquote>`); continue; }
+    if (/^\d+\.\s+(.*)/.test(line)) { if (!inOl) { closeLists(); out.push("<ol>"); inOl = true; } out.push(`<li>${inline(line.replace(/^\d+\.\s+/, ""))}</li>`); continue; }
+    if (/^[-*]\s+(.*)/.test(line)) { if (!inUl) { closeLists(); out.push("<ul>"); inUl = true; } out.push(`<li>${inline(line.replace(/^[-*]\s+/, ""))}</li>`); continue; }
+    if (line.trim() === "") { closeLists(); continue; }
+    closeLists();
+    // 行内格式：**粗体**、`代码`
+    out.push(`<p>${inline(line)}</p>`);
+  }
+  closeLists();
+  return out.join("\n");
+}
+
+function copyResult() {
+  const text = document.getElementById("resultPre").textContent;
+  navigator.clipboard.writeText(text).then(() => alert("已复制到剪贴板"));
+}
+
+function downloadResult() {
+  const text = document.getElementById("resultPre").textContent;
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "视频精华.md";
+  a.click();
+}
+
+function downloadSrt() {
+  if (!currentTask) return;
+  window.open(`/api/tasks/${currentTask}/transcript?as_srt=true`, "_blank");
+}
+
+// ===== 导出 Word / PDF =====
+function exportTask(fmt) {
+  if (!currentTask) { showErr("请先完成一个任务再导出"); return; }
+  const token = document.getElementById("apiToken").value.trim();
+  fetch(`/api/tasks/${currentTask}/export?fmt=${fmt}`, { headers: token ? { "X-API-Key": token } : {} })
+    .then(async (r) => {
+      if (!r.ok) { throw new Error(errMsg(await r.json().catch(() => ({})))); }
+      const blob = await r.blob();
+      const cd = r.headers.get("Content-Disposition") || "";
+      let name = `视频精华.${fmt}`;
+      const mStar = cd.match(/filename\*=UTF-8''([^;]+)/i);
+      const mPlain = cd.match(/filename="?([^";]+)"?/i);
+      if (mStar) name = decodeURIComponent(mStar[1]);
+      else if (mPlain) name = mPlain[1];
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    })
+    .catch((e) => showErr(e.message));
+}
+
+// ===== 多 P 选集批量 =====
+let epPages = [];
+
+async function maybeDetectEpisodes(force) {
+  const url = document.getElementById("url").value.trim();
+  if (!url || !/BV[0-9A-Za-z]{10}/.test(url)) return;
+  if (!force && document.getElementById("page").value.trim() !== "0") return; // 填了页码/范围就不弹面板
+  try {
+    const resp = await fetch("/api/pages?url=" + encodeURIComponent(url));
+    if (!resp.ok) return;
+    const data = await resp.json();
+    epPages = data.pages || [];
+    if (epPages.length <= 1) { closeEpPanel(); return; }
+    renderEpList(epPages);
+    document.getElementById("epPanel").style.display = "block";
+  } catch (e) { /* 探测失败不打扰主流程 */ }
+}
+
+function renderEpList(pages) {
+  document.getElementById("epCount").textContent = pages.length;
+  const list = document.getElementById("epList");
+  list.innerHTML = "";
+  for (const p of pages) {
+    const div = document.createElement("div");
+    div.className = "ep-item";
+    div.innerHTML = `<input type="checkbox" class="ep-check" value="${p.page}" checked>
+      <span style="color:var(--muted);min-width:42px">P${p.page}</span>
+      <span class="ep-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</span>
+      <span class="ep-dur">${fmtDur(p.duration)}</span>`;
+    list.appendChild(div);
+  }
+}
+
+function closeEpPanel() { document.getElementById("epPanel").style.display = "none"; }
+
+async function submitEpisodes() {
+  const checks = [...document.querySelectorAll(".ep-check:checked")].map(c => parseInt(c.value));
+  if (!checks.length) { showErr("请至少勾选一集"); return; }
+  const url = document.getElementById("url").value.trim();
+  hideErr(); setBusy(true);
+  let ok = 0, fail = 0;
+  for (const pg of checks) {
+    try { await postExtract(url, buildOptions({ page: pg })); ok++; }
+    catch (e) { fail++; }
+  }
+  setBusy(false);
+  showCached(`🎞️ 已批量提交 ${ok} 集（转写缓存命中时后续集秒出）${fail ? `，失败 ${fail} 集` : ""}`);
+  loadHistory();
+}
+
+function fmtDur(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}分${s}秒`;
+}
+function setBusy(b) { document.getElementById("submit").disabled = b; document.getElementById("submit").textContent = b ? "处理中…" : "开始提取"; }
+function showErr(msg) { const e = document.getElementById("errBox"); e.textContent = "❌ " + msg; e.style.display = "block"; }
+function hideErr() { document.getElementById("errBox").style.display = "none"; }
+function hideResult() { document.getElementById("resultCard").style.display = "none"; }
+function showCached(msg) { const c = document.getElementById("cachedBox"); c.textContent = msg; c.style.display = "block"; }
+function hideCached() { document.getElementById("cachedBox").style.display = "none"; }
+
+// 统一错误解析：兼容 FastAPI 422 校验错误（detail 为数组）与业务错误（detail.message）
+function errMsg(data) {
+  if (!data) return "请求失败";
+  if (Array.isArray(data.detail)) {
+    const first = data.detail[0] || {};
+    const loc = (first.loc || []).slice(1).join(".");
+    return `${loc ? loc + "：" : ""}${first.msg || "参数错误"}`;
+  }
+  if (data.detail && typeof data.detail === "object") {
+    return data.detail.message || "请求失败";
+  }
+  if (data.detail && typeof data.detail === "string") {
+    return data.detail;
+  }
+  // FastAPI 未包 detail 的直接 JSON（如鉴权 401 {code,message}、业务 {message}）
+  if (data.message) return data.message;
+  if (data.code) return data.code;
+  return "请求失败";
+}
+
+// ===== 历史任务列表 =====
+const STATUS_LABEL = { done: "已完成", running: "处理中", queued: "排队中", failed: "失败", cancelled: "已取消" };
+const DEPTH_LABEL = { essence: "精华摘要", detailed: "详细要点", full: "全文整理" };
+const DEPTH_CLS = { essence: "depth-essence", detailed: "depth-detailed", full: "depth-full" };
+const HIST_PAGE_SIZE = 10;
+let histPage = 1;
+let histStatus = "";
+let histTotalPages = 1;
+let histTimer = null;
+
+async function loadHistory() {
+  clearTimeout(histTimer);
+  try {
+    const qs = `page=${histPage}&page_size=${HIST_PAGE_SIZE}&status=${encodeURIComponent(histStatus)}`;
+    const resp = await fetch("/api/tasks?" + qs);
+    const data = await resp.json();
+    if (!resp.ok || !data.items) return;
+
+    histTotalPages = Math.max(1, Math.ceil((data.total || 0) / HIST_PAGE_SIZE));
+    if (histPage > histTotalPages) { histPage = histTotalPages; loadHistory(); return; }
+
+    const body = document.getElementById("historyBody");
+    body.innerHTML = "";
+    document.getElementById("historyEmpty").style.display = data.items.length ? "none" : "block";
+    document.getElementById("pageInfo").textContent =
+      `第 ${histPage} / ${histTotalPages} 页 · 共 ${data.total || 0} 条`;
+    document.getElementById("prevPage").disabled = histPage <= 1;
+    document.getElementById("nextPage").disabled = histPage >= histTotalPages;
+
+    let hasActive = false;
+    for (const t of data.items) {
+      if (t.status === "running" || t.status === "queued") hasActive = true;
+      const title = (t.video && t.video.title) ? t.video.title : (t.url || "(标题获取中…)");
+      const dur = t.video ? fmtDur(t.video.duration) : "-";
+      const time = (t.created_at || t.updated_at || "").slice(5, 16);
+      const depthBadge =
+        `<span class="badge ${DEPTH_CLS[t.depth] || "depth-essence"}">${DEPTH_LABEL[t.depth] || t.depth || "精华摘要"}</span>`;
+      let statusCell = `<span class="badge ${t.status}">${STATUS_LABEL[t.status] || t.status}</span>`;
+      if (t.status === "running" || t.status === "queued") {
+        statusCell += `<div class="his-progress">${Math.round(t.progress || 0)}% · ${STAGE_LABEL[t.stage] || ""}</div>`;
+      }
+      const ops = [];
+      if (t.status === "done") {
+        ops.push(`<button class="tbtn primary" onclick="viewTask('${t.task_id}')">查看</button>`);
+        ops.push(`<button class="tbtn" onclick="downloadTask('${t.task_id}')">下载 .md</button>`);
+      } else if (t.status === "failed") {
+        ops.push(`<button class="tbtn" onclick="showErrMsg('${t.task_id}')">错误详情</button>`);
+        if (t.video) ops.push(`<button class="tbtn primary" onclick="retryTask('${t.task_id}')">重试</button>`);
+      } else {
+        ops.push(`<button class="tbtn" onclick="viewTask('${t.task_id}')">详情</button>`);
+      }
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${statusCell}</td><td>${depthBadge}</td>
+        <td class="hist-title" title="${escapeHtml(title)}">${escapeHtml(title)}</td>
+        <td>${dur}</td><td>${time}</td><td>${ops.join("")}</td>`;
+      body.appendChild(tr);
+    }
+    // 有进行中/排队任务时每 5 秒自动刷新
+    if (hasActive) histTimer = setTimeout(() => loadHistory(), 5000);
+  } catch (e) { /* 历史列表加载失败不打扰主流程 */ }
+}
+
+function onFilterChange() {
+  histStatus = document.getElementById("statusFilter").value;
+  histPage = 1;
+  loadHistory();
+}
+
+function goPage(delta) {
+  const next = histPage + delta;
+  if (next < 1 || next > histTotalPages) return;
+  histPage = next;
+  loadHistory();
+}
+
+async function viewTask(taskId) {
+  const resp = await fetch(`/api/tasks/${taskId}`);
+  const t = await resp.json();
+  if (!resp.ok) { showErr(errMsg(t)); return; }
+  if (t.status === "done") {
+    currentTask = taskId;
+    hideErr(); setBusy(false);
+    renderResult(t);
+  } else if (t.status === "failed") {
+    showErr((t.error?.message || "任务失败") + (t.error?.code ? `（${t.error.code}）` : ""));
+  } else {
+    currentTask = taskId;
+    hideErr();
+    document.getElementById("progressWrap").style.display = "block";
+    document.getElementById("pLabel").textContent = "继续跟踪进度…";
+    poll();
+  }
+}
+
+async function showErrMsg(taskId) {
+  const resp = await fetch(`/api/tasks/${taskId}`);
+  const t = await resp.json();
+  showErr((t.error?.message || "无错误信息") + (t.error?.code ? `（${t.error.code}）` : ""));
+}
+
+// 重试：带上原任务的 depth/page/asr_model/output_lang 等参数重跑（不再固定 essence）
+async function retryTask(taskId) {
+  try {
+    const resp = await fetch(`/api/tasks/${taskId}`);
+    const t = await resp.json();
+    if (!resp.ok) { throw new Error(errMsg(t)); }
+    const url = t.url || (t.video && t.video.url);
+    if (!url) { showErr("该任务无视频信息，无法重试"); return; }
+    hideErr(); hideResult(); hideCached(); setBusy(true);
+    const data = await postExtract(url, {
+      depth: t.depth || "essence",
+      purpose: t.purpose || "快速了解视频核心内容",
+      audience: t.audience || "通用受众",
+      asr_model: t.asr_model || "",
+      output_lang: t.output_lang || "zh",
+      page: t.page || 0,
+    });
+    currentTask = data.task_id;
+    if (data.cached) {
+      showCached("⚡ 命中缓存：同一链接与深度已有结果，直接复用（省去重复下载 / 转写 / LLM 调用）");
+    }
+    document.getElementById("progressWrap").style.display = "block";
+    document.getElementById("pLabel").textContent = "排队中…";
+    poll();
+  } catch (e) {
+    showErr(e.message);
+    setBusy(false);
+  }
+}
+
+function downloadTask(taskId) {
+  fetch(`/api/tasks/${taskId}`)
+    .then(r => r.json())
+    .then(t => {
+      if (!t.markdown) return;
+      const blob = new Blob([t.markdown], { type: "text/markdown;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "视频精华_" + taskId + ".md";
+      a.click();
+    })
+    .catch(() => {});
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// 页面加载时拉取历史
+loadHistory();
+</script>
+</body>
+</html>

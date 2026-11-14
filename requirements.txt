@@ -1,0 +1,14 @@
+yt-dlp>=2025.6.30
+fastapi>=0.115
+uvicorn[standard]>=0.30
+openai>=1.40,<2
+pydantic>=2.7,<3
+python-multipart>=0.0.9
+python-dotenv>=1.0
+faster-whisper>=1.0
+# faster-whisper 1.2.x 依赖 av.open(metadata_errors=...)，av>=14 已移除该参数，故锁定 13.x
+av==13.1.0
+# 导出 Word（app/exporter.py；缺失时 DOCX 导出自动降级为 .md 纯文本）
+python-docx>=1.1
+# 测试
+pytest>=8.0

@@ -1,0 +1,14 @@
+services:
+  video-extractor:
+    build: .
+    container_name: video-extractor
+    ports:
+      - "8000:8000"
+    environment:
+      # 国内网络默认走 HuggingFace 镜像；可被 .env 覆盖
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
