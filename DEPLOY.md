@@ -56,3 +56,24 @@ python -m pytest tests -q
 ```
 纯单元测试，不联网、不调真实模型/LLM。GitHub Actions（`.github/workflows/ci.yml`）
 会在每次 push / PR 自动运行。
+
+## 六、用现成镜像快速体验（无需自己 build）
+
+本仓库每次合并到 `main` 会自动构建镜像并推送到 GitHub Container Registry：
+
+```bash
+docker run -p 8000:8000 --env-file .env ghcr.io/ye-yu09/video-extraction:latest
+```
+
+打开 http://localhost:8000 。需自备一份 `.env`（至少填 `LLM_API_KEY`）。
+
+> 首次镜像需在仓库 → **Packages** 页把它设为 **Public**，别人才能 `docker pull`（GHCR 包默认私有）。
+
+## 七、部署到公网（让别人直接访问）
+
+1. 一台带 Docker 的服务器（VPS）。
+2. `git clone` 本仓库 → 填 `.env`（**务必设 `API_TOKEN`**）→ `docker compose up -d --build`。
+3. 用 Caddy / Nginx 反代加 HTTPS，或防火墙放行 8000 端口。
+
+> ⚠️ 公网部署一定要设 `API_TOKEN`，否则任何人都能调用并消耗你的 LLM 额度
+> （服务绑定 `0.0.0.0` 且无 token 时，启动会打醒目告警）。
